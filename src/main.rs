@@ -72,8 +72,13 @@ fn main() {
         }
     });
 
-    let results = Pattern::guess(&last_week, base_price, prices);
-    let mut results: Vec<(Pattern, f64)> = results.into_iter().collect();
+    let mut results: Vec<(Pattern, f64)> = match Pattern::guess(&last_week, base_price, prices) {
+        Some(r) => r.into_iter().collect(),
+        None => {
+            println!("Invalid pattern. Either your numbers are wrong or there is a bug.");
+            return;
+        }
+    };
     results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     println!("Analysis:");
     for (pattern, chance) in results.iter() {

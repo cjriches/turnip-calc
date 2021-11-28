@@ -12,17 +12,16 @@ pub enum Pattern {
 
 impl Pattern {
     /// Prior probability of this pattern occurring, given last week's pattern.
-    pub fn prior(&self, prev: &Pattern) -> f64 {
+    fn prior(&self, prev: &Pattern) -> f64 {
         match prev {
             Pattern::Unknown => {
                 // We don't know the previous pattern, so respond with the average.
-                // These were empirically calculated by running many iterations.
                 match self {
                     Pattern::Unknown => panic!("Invalid pattern."),
-                    Pattern::Decreasing => 0.1477,
-                    Pattern::Random => 0.3504,
-                    Pattern::SmallSpike => 0.2542,
-                    Pattern::LargeSpike => 0.2477,
+                    Pattern::Decreasing => 0.15,
+                    Pattern::Random => 0.35,
+                    Pattern::SmallSpike => 0.25,
+                    Pattern::LargeSpike => 0.25,
                 }
             }
             Pattern::Decreasing => {
@@ -66,7 +65,7 @@ impl Pattern {
 
     /// Guess the pattern from a sequence of prices.
     pub fn guess(last_week: &Pattern, base_price: u32,
-                 prices: impl IntoIterator<Item = u32>) -> HashMap<Pattern, f64> {
+                 prices: impl IntoIterator<Item = u32>) -> Option<HashMap<Pattern, f64>> {
         let mut prices = prices.into_iter();
         let mut chances = HashMap::with_capacity(4);
         chances.insert(Pattern::Decreasing, Pattern::Decreasing.prior(last_week));
@@ -74,13 +73,14 @@ impl Pattern {
         chances.insert(Pattern::SmallSpike, Pattern::SmallSpike.prior(last_week));
         chances.insert(Pattern::LargeSpike, Pattern::LargeSpike.prior(last_week));
 
-        // Helper macro to normalise the `chances`.
-        macro_rules! normalise {
+        // Helper macro to normalise the `chances` before returning.
+        macro_rules! done {
             () => {{
                 let total: f64 = chances.values().sum();
                 for chance in chances.values_mut() {
                     *chance /= total;
                 }
+                return Some(chances);
             }}
         }
 
@@ -90,8 +90,7 @@ impl Pattern {
                 if let Some(price) = prices.next() {
                     price
                 } else {
-                    normalise!();
-                    return chances;
+                    done!();
                 }
             }}
         }
@@ -111,27 +110,38 @@ impl Pattern {
             }}
         }
 
+        // Helper macro to check an invariant.
+        macro_rules! invariant {
+            ($condition:expr) => {{
+                if !$condition {
+                    return None;
+                }
+            }}
+        }
+
+        // Sanity check the base price.
+        invariant!(base_price >= 90);
+        invariant!(base_price <= 110);
+
         // Check the first price.
         // Decreasing starts 85-90.
         // Random starts 90-140 (6/7) or 60-80 (1/7).
         // Small starts 40-90 (7/8) or 90-140 (1/8).
         // Large starts 85-90.
         let first = next!();
-        assert!(first >= mult!(0.40));
+        invariant!(first >= mult!(0.40));
         if first < mult!(0.60) {
             // If we are in the range 40-60, this must be a small spike.
             eliminate!(Decreasing);
             eliminate!(Random);
             eliminate!(LargeSpike);
-            normalise!();
-            return chances;
+            done!()
         } else if first < mult!(0.85) {
             // If we are in the range 60-85, this must be random.
             eliminate!(Decreasing);
             eliminate!(SmallSpike);
             eliminate!(LargeSpike);
-            normalise!();
-            return chances;
+            done!()
         } else if first < mult!(0.90) {
             // If we are in the range 85-90, this could be anything except random.
             eliminate!(Random);
@@ -141,7 +151,7 @@ impl Pattern {
             // Large spike always satisfies this.
 
             // Now inspect the following prices.
-            // We expect to decrease by 3-5% each price.
+            // We expect to decrease by 3-5% each time.
             // This will happen 0-6 times for a spike, or indefinitely for decreasing.
             let mut min = first as f64 / base_price as f64;
             let mut max = min;
@@ -151,7 +161,7 @@ impl Pattern {
                 min -= 0.05;
                 max -= 0.03;
                 price = next!();
-                assert!(price >= mult!(min));
+                invariant!(price >= mult!(min));
                 if price > mult!(max) {
                     spike = true;
                     break;
@@ -166,16 +176,15 @@ impl Pattern {
                 // No spike; this is decreasing.
                 eliminate!(SmallSpike);
                 eliminate!(LargeSpike);
-                normalise!();
-                return chances;
+                done!()
             }
 
             // Spike! But which one?
             eliminate!(Decreasing);
-            assert!(price >= mult!(0.90));
-            assert!(price < mult!(1.40));
+            invariant!(price >= mult!(0.90));
+            invariant!(price < mult!(1.40));
             price = next!();
-            assert!(price >= mult!(0.90));
+            invariant!(price >= mult!(0.90));
             if price < mult!(1.40) {
                 // Small spike.
                 eliminate!(LargeSpike);
@@ -183,8 +192,7 @@ impl Pattern {
                 // Large spike.
                 eliminate!(SmallSpike);
             }
-            normalise!();
-            return chances;
+            done!()
         } else if first < mult!(1.40) {
             // If we are in the range 90-140, it could be random or small spike.
             eliminate!(Decreasing);
@@ -201,8 +209,7 @@ impl Pattern {
             if price < mult!(0.90) {
                 // Random.
                 eliminate!(SmallSpike);
-                normalise!();
-                return chances;
+                done!()
             } else {
                 *chances.get_mut(&Pattern::Random).unwrap() *= 5.0 / 6.0;
             }
@@ -217,10 +224,9 @@ impl Pattern {
                 // Small spike.
                 eliminate!(Random);
             }
-            normalise!();
-            return chances;
+            done!()
         } else {
-            unreachable!();
+            return None;
         }
     }
 }
