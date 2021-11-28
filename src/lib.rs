@@ -124,31 +124,29 @@ impl Pattern {
         invariant!(base_price <= 110);
 
         // Check the first price.
-        // Decreasing starts 85-90.
-        // Random starts 90-140 (6/7) or 60-80 (1/7).
-        // Small starts 40-90 (7/8) or 90-140 (1/8).
-        // Large starts 85-90.
+        // Decreasing starts at 85-90%.
+        // Random starts at 90-140% (6/7 of the time) or 60-80% (1/7 of the time).
+        // Small starts 40-90% (7/8 of the time) or 90-140% (1/8 of the time).
+        // Large starts 85-90%.
         let first = next!();
         invariant!(first >= mult!(0.40));
         if first < mult!(0.60) {
-            // If we are in the range 40-60, this must be a small spike.
+            // If we are in the range 40-60%, this must be a small spike.
             eliminate!(Decreasing);
             eliminate!(Random);
             eliminate!(LargeSpike);
             done!()
         } else if first < mult!(0.85) {
-            // If we are in the range 60-85, this must be random.
+            // If we are in the range 60-85%, this must be random.
             eliminate!(Decreasing);
             eliminate!(SmallSpike);
             eliminate!(LargeSpike);
             done!()
         } else if first < mult!(0.90) {
-            // If we are in the range 85-90, this could be anything except random.
+            // If we are in the range 85-90%, this could be anything except random.
             eliminate!(Random);
-            // Decreasing always satisfies this.
-            // Small spike satisfies this 7/8 of the time.
+            // Small spike satisfies this only 7/8 of the time.
             *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 7.0 / 8.0;
-            // Large spike always satisfies this.
 
             // Now inspect the following prices.
             // We expect to decrease by 3-5% each time.
@@ -166,7 +164,7 @@ impl Pattern {
                     spike = true;
                     break;
                 }
-                // Reduce spike chances.
+                // Reduce spike chances proportionally on each successive decrease.
                 let factor = (6 - i) as f64 / (7 - i) as f64;
                 *chances.get_mut(&Pattern::SmallSpike).unwrap() *= factor;
                 *chances.get_mut(&Pattern::LargeSpike).unwrap() *= factor;
@@ -194,17 +192,17 @@ impl Pattern {
             }
             done!()
         } else if first < mult!(1.40) {
-            // If we are in the range 90-140, it could be random or small spike.
+            // If we are in the range 90-140%, it could be random or small spike.
             eliminate!(Decreasing);
             eliminate!(LargeSpike);
-            // Random satisfies this 6/7 of the time.
+            // Random satisfies this only 6/7 of the time.
             *chances.get_mut(&Pattern::Random).unwrap() *= 6.0 / 7.0;
-            // Small spike satisfies this 1/8 of the time.
+            // Small spike satisfies this only 1/8 of the time.
             *chances.get_mut(&Pattern::SmallSpike).unwrap() /= 8.0;
 
-            // If this is random, the next price is 60-80 with probability 1/6,
-            // or 90-140 again with probability 5/6. If this is small spike,
-            // the next price is definitely 90-140.
+            // If this is random, the next price is 60-80% with probability 1/6,
+            // or 90-140% again with probability 5/6. If this is small spike,
+            // the next price is definitely 90-140%.
             let mut price = next!();
             if price < mult!(0.90) {
                 // Random.
@@ -215,7 +213,7 @@ impl Pattern {
             }
 
             // The next price will tell us for sure.
-            // Small spike will be at least 140, random will be at most 140.
+            // Small spike will be at least 140%, random will be at most 140%.
             price = next!();
             if price < mult!(1.40) {
                 // Random.
@@ -226,6 +224,7 @@ impl Pattern {
             }
             done!()
         } else {
+            // Invalid first price.
             return None;
         }
     }
