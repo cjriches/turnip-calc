@@ -52,18 +52,15 @@ fn cli() -> App<'static, 'static> {
 
 fn main() {
     let args = cli().get_matches();
-    let last_week = match args.value_of(LAST_WEEK).map(str::to_ascii_lowercase) {
-        Some(val) => {
-            match val.as_str() {
-                DECREASING => Pattern::Decreasing,
-                RANDOM => Pattern::Random,
-                SMALL_SPIKE => Pattern::SmallSpike,
-                LARGE_SPIKE => Pattern::LargeSpike,
-                _ => unreachable!(),
-            }
+    let last_week = args.value_of(LAST_WEEK).map(|val| {
+        match val.to_ascii_lowercase().as_str() {
+            DECREASING => Pattern::Decreasing,
+            RANDOM => Pattern::Random,
+            SMALL_SPIKE => Pattern::SmallSpike,
+            LARGE_SPIKE => Pattern::LargeSpike,
+            _ => unreachable!(),
         }
-        None => Pattern::Unknown,
-    };
+    });
     let base_price = value_t!(args, BASE_PRICE, u32).unwrap_or_else(|e| e.exit());
     let prices = values_t!(args, PRICES, u32).unwrap_or_else(|e| {
         match e.kind {
@@ -72,7 +69,7 @@ fn main() {
         }
     });
 
-    let mut results: Vec<(Pattern, f64)> = match Pattern::guess(&last_week, base_price, prices) {
+    let mut results: Vec<(Pattern, f64)> = match Pattern::guess(last_week, base_price, prices) {
         Some(r) => r.into_iter().collect(),
         None => {
             println!("Invalid pattern. Either your numbers are wrong or there is a bug.");

@@ -3,7 +3,6 @@ use std::collections::HashMap;
 /// Possible patterns for the week.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Pattern {
-    Unknown,
     Decreasing,
     Random,
     SmallSpike,
@@ -12,48 +11,43 @@ pub enum Pattern {
 
 impl Pattern {
     /// Prior probability of this pattern occurring, given last week's pattern.
-    fn prior(&self, prev: &Pattern) -> f64 {
+    fn prior(&self, prev: Option<Pattern>) -> f64 {
         match prev {
-            Pattern::Unknown => {
+            None => {
                 // We don't know the previous pattern, so respond with the average.
                 match self {
-                    Pattern::Unknown => panic!("Invalid pattern."),
                     Pattern::Decreasing => 0.15,
                     Pattern::Random => 0.35,
                     Pattern::SmallSpike => 0.25,
                     Pattern::LargeSpike => 0.25,
                 }
             }
-            Pattern::Decreasing => {
+            Some(Pattern::Decreasing) => {
                 match self {
-                    Pattern::Unknown => panic!("Invalid pattern."),
                     Pattern::Decreasing => 0.05,
                     Pattern::Random => 0.25,
                     Pattern::SmallSpike => 0.25,
                     Pattern::LargeSpike => 0.45,
                 }
             }
-            Pattern::Random => {
+            Some(Pattern::Random) => {
                 match self {
-                    Pattern::Unknown => panic!("Invalid pattern."),
                     Pattern::Decreasing => 0.15,
                     Pattern::Random => 0.20,
                     Pattern::SmallSpike => 0.35,
                     Pattern::LargeSpike => 0.30,
                 }
             }
-            Pattern::SmallSpike => {
+            Some(Pattern::SmallSpike) => {
                 match self {
-                    Pattern::Unknown => panic!("Invalid pattern."),
                     Pattern::Decreasing => 0.15,
                     Pattern::Random => 0.45,
                     Pattern::SmallSpike => 0.15,
                     Pattern::LargeSpike => 0.25,
                 }
             }
-            Pattern::LargeSpike => {
+            Some(Pattern::LargeSpike) => {
                 match self {
-                    Pattern::Unknown => panic!("Invalid pattern."),
                     Pattern::Decreasing => 0.20,
                     Pattern::Random => 0.50,
                     Pattern::SmallSpike => 0.25,
@@ -64,7 +58,7 @@ impl Pattern {
     }
 
     /// Guess the pattern from a sequence of prices.
-    pub fn guess(last_week: &Pattern, base_price: u32,
+    pub fn guess(last_week: Option<Pattern>, base_price: u32,
                  prices: impl IntoIterator<Item = u32>) -> Option<HashMap<Pattern, f64>> {
         let mut prices = prices.into_iter();
         let mut chances = HashMap::with_capacity(4);
