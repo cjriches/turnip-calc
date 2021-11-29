@@ -136,10 +136,79 @@ impl Pattern {
             eliminate!(Random);
             eliminate!(LargeSpike);
             done!()
-        } else if first < mult!(0.85) {
-            // If we are in the range 60-85%, this must be random.
+        } else if first < mult!(0.80) {
+            // If we are in the range 60-80%, this could be random or small spike.
             eliminate!(Decreasing);
-            eliminate!(SmallSpike);
+            eliminate!(LargeSpike);
+            // Random satisfies this only 1/7 of the time.
+            *chances.get_mut(&Pattern::Random).unwrap() /= 7.0;
+            // Small spike satisfies this only 7/8 of the time.
+            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 7.0 / 8.0;
+
+            // Now inspect the following prices.
+            // We expect to decrease by 3-5% each time.
+            // This will happen 0-6 times for a spike, or 1-2 times for random.
+            let mut min = first as f64 / base_price as f64;
+            let mut max = min;
+            let mut price = next!();
+            min -= 0.05;
+            max -= 0.03;
+            invariant!(price >= mult!(min));
+            if price > mult!(max) {
+                // Zero decreases, must be a spike.
+                eliminate!(Random);
+                done!()
+            }
+            // At least one decrease.
+            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 5.0 / 6.0;
+            // Check if there are exactly one or two decreases.
+            let mut decreases = 1;
+            for i in 2..=3 {
+                price = next!();
+                min -= 0.05;
+                max -= 0.03;
+                invariant!(price >= mult!(min));
+                if price > mult!(max) {
+                    break;
+                }
+                let factor = (6 - i) as f64 / (7 - i) as f64;
+                *chances.get_mut(&Pattern::SmallSpike).unwrap() *= factor;
+                *chances.get_mut(&Pattern::Random).unwrap() /= 2.0;
+                decreases = i;
+            }
+
+            if decreases > 2 {
+                // There were more than two decreases, so must be a spike.
+                eliminate!(Random);
+                done!()
+            }
+
+            // There were one or two decreases, still unclear.
+            // This price was the first increase. It will always be 90-140%.
+            invariant!(price >= mult!(0.90));
+            invariant!(price < mult!(1.40));
+
+            // The next price may go back down if random, or can be 90-140%
+            // again in either case.
+            price = next!();
+            if price < mult!(0.90) {
+                eliminate!(SmallSpike);
+                done!()
+            }
+
+            // The next price will tell us for sure. If this is a small spike,
+            // it will be at least 140%.
+            price = next!();
+            if price >= mult!(1.40) {
+                eliminate!(Random)
+            } else {
+                eliminate!(SmallSpike);
+            }
+            done!()
+        } else if first < mult!(0.85) {
+            // Only small spike can produce 80-85%.
+            eliminate!(Decreasing);
+            eliminate!(Random);
             eliminate!(LargeSpike);
             done!()
         } else if first < mult!(0.90) {
