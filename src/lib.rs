@@ -188,12 +188,14 @@ impl Pattern {
             invariant!(price >= mult!(0.90));
             invariant!(price < mult!(1.40));
 
-            // The next price may go back down if random, or can be 90-140%
-            // again in either case.
+            // The next price may go back down if random (1/7 chance),
+            // or can be 90-140% again in either case.
             price = next!();
             if price < mult!(0.90) {
                 eliminate!(SmallSpike);
                 done!()
+            } else {
+                *chances.get_mut(&Pattern::Random).unwrap() *= 6.0 / 7.0;
             }
 
             // The next price will tell us for sure. If this is a small spike,
