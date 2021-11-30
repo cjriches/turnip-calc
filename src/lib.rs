@@ -140,35 +140,68 @@ impl Pattern {
             *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 7.0 / 8.0;
 
             // Now inspect the following prices.
-            // We expect to decrease by 3-5% each time.
-            // This will happen 0-6 times for a spike, or 1-2 times for random.
+            // Small spike will decrease by 3-5% 0-6 times.
+            // Random will decrease by 4-10% 1-2 times.
             let mut min = first as f64 / base_price as f64;
+            let mut rand_thresh = min;
+            let mut spike_thresh = min;
             let mut max = min;
             let mut price = next!();
-            min -= 0.05;
+            min -= 0.10;
+            rand_thresh -= 0.05;
+            spike_thresh -= 0.04;
             max -= 0.03;
             invariant!(price >= mult!(min));
-            if price > mult!(max) {
+            if price < mult!(rand_thresh) {
+                // Big decrease, must be random.
+                eliminate!(SmallSpike);
+                done!()
+            } else if price > mult!(max) {
                 // Zero decreases, must be a spike.
                 eliminate!(Random);
                 done!()
+            } else if price > mult!(spike_thresh) {
+                // Tiny decrease, must be a spike.
+                eliminate!(Random);
+                done!()
             }
-            // At least one decrease.
+            // At least one decrease, which was in the overlap range of 4-5%.
             *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 5.0 / 6.0;
+            // The following two adjustments assume uniform distribution
+            // over the decrease ranges, and account for the fact that
+            // the decrease was in 4-5% which is more likely on small
+            // spike (1/2 chance) than random (2/6 chance).
+            *chances.get_mut(&Pattern::SmallSpike).unwrap() /= 2.0;
+            *chances.get_mut(&Pattern::Random).unwrap() *= 2.0 / 6.0;
             // Check if there are exactly one or two decreases.
             let mut decreases = 1;
             for i in 2..=3 {
                 price = next!();
-                min -= 0.05;
+                min -= 0.10;
+                rand_thresh -= 0.05;
+                spike_thresh -= 0.04;
                 max -= 0.03;
                 invariant!(price >= mult!(min));
-                if price > mult!(max) {
+                if price < mult!(rand_thresh) {
+                    // Big decrease, must be random.
+                    eliminate!(SmallSpike);
+                    done!()
+                } else if price > mult!(max) {
+                    // One or two decreases, still unclear.
                     break;
+                } else if price > mult!(spike_thresh) {
+                    // Tiny decrease, must be a spike.
+                    eliminate!(Random);
+                    done!()
                 }
+                // Decrease between 4-5%. Adjust for number of decreases.
                 let factor = (6 - i) as f64 / (7 - i) as f64;
                 *chances.get_mut(&Pattern::SmallSpike).unwrap() *= factor;
                 *chances.get_mut(&Pattern::Random).unwrap() /= 2.0;
                 decreases = i;
+                // Now adjust for size of decrease.
+                *chances.get_mut(&Pattern::SmallSpike).unwrap() /= 2.0;
+                *chances.get_mut(&Pattern::Random).unwrap() *= 2.0 / 6.0;
             }
 
             if decreases > 2 {
