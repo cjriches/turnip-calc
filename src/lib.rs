@@ -131,6 +131,10 @@ impl Pattern {
             eliminate!(LargeSpike);
             done!()
         } else if first < mult!(0.80) {
+            // XXX: the datamined code implies that the range is inclusive of 0.80 if
+            // this is a random pattern, so there is potentially overlap with the
+            // 0.80-0.85 case. We do not currently handle this.
+
             // If we are in the range 60-80%, this could be random or small spike.
             eliminate!(Decreasing);
             eliminate!(LargeSpike);
@@ -236,12 +240,25 @@ impl Pattern {
             }
             done!()
         } else if first < mult!(0.85) {
+            // See previous case.
+            if first == mult!(0.80) {
+                eprintln!("Warning: boundary condition.\n\
+                          The first price is exactly 80% of the base price; \
+                          this results in an ambiguous state that this tool \
+                          cannot currently solve. The below estimates may not \
+                          be accurate.");
+            }
+
             // Only small spike can produce 80-85%.
             eliminate!(Decreasing);
             eliminate!(Random);
             eliminate!(LargeSpike);
             done!()
         } else if first < mult!(0.90) {
+            // XXX: the datamined code implies that the range is inclusive of 0.90
+            // for all three possible patterns here, so there is potentially
+            // overlap with the 0.90-1.40 case. We do not currently handle this.
+
             // If we are in the range 85-90%, this could be anything except random.
             eliminate!(Random);
             // Small spike satisfies this only 7/8 of the time, and then has to
@@ -292,6 +309,15 @@ impl Pattern {
             }
             done!()
         } else if first < mult!(1.40) {
+            // See previous case.
+            if first == mult!(0.90) {
+                eprintln!("Warning: boundary condition.\n\
+                          The first price is exactly 90% of the base price; \
+                          this results in an ambiguous state that this tool \
+                          cannot currently solve. The below estimates may not \
+                          be accurate.");
+            }
+
             // If we are in the range 90-140%, it could be random or small spike.
             eliminate!(Decreasing);
             eliminate!(LargeSpike);
