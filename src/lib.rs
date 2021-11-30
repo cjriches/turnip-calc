@@ -136,8 +136,9 @@ impl Pattern {
             eliminate!(LargeSpike);
             // Random satisfies this only 1/7 of the time.
             *chances.get_mut(&Pattern::Random).unwrap() /= 7.0;
-            // Small spike satisfies this only 7/8 of the time.
-            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 7.0 / 8.0;
+            // Small spike satisfies this only 7/8 of the time, and then has to
+            // roll within 60-80 rather than 40-90 more generally.
+            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= (7.0 / 8.0) * (20.0 / 50.0);
 
             // Now inspect the following prices.
             // Small spike will decrease by 3-5% 0-6 times.
@@ -243,8 +244,9 @@ impl Pattern {
         } else if first < mult!(0.90) {
             // If we are in the range 85-90%, this could be anything except random.
             eliminate!(Random);
-            // Small spike satisfies this only 7/8 of the time.
-            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 7.0 / 8.0;
+            // Small spike satisfies this only 7/8 of the time, and then has to
+            // roll within 85-90 rather than 40-90 more generally.
+            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= (7.0 / 8.0) * (5.0 / 50.0);
 
             // Now inspect the following prices.
             // We expect to decrease by 3-5% each time.
