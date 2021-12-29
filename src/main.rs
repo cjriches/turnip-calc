@@ -68,15 +68,16 @@ fn main() {
             _ => e.exit(),
         }
     });
+    // TODO allow missing prices with '?'
+    let prices = prices.into_iter().map(Some).collect();
 
-    let mut results: Vec<(Pattern, f64)> = match Pattern::guess(last_week, base_price, prices) {
-        Some(r) => r.into_iter().collect(),
-        None => {
-            println!("Invalid pattern. Either your numbers are wrong or there is a bug.");
-            return;
-        }
-    };
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    let results = turnip_calc::run(last_week, base_price, prices);
+    if results.is_empty() {
+        println!("These prices did not match any known pattern. Either your \
+                  numbers are wrong, or there is a bug.");
+        return;
+    }
+
     println!("Analysis:");
     for (pattern, chance) in results.iter() {
         println!("{:?}: {:.0}%", pattern, chance * 100.0);

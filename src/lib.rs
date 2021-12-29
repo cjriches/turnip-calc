@@ -1,357 +1,50 @@
 use std::collections::HashMap;
 
-/// Possible patterns for the week.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Pattern {
-    Decreasing,
-    Random,
-    SmallSpike,
-    LargeSpike,
-}
+mod node;
+mod pattern;
 
-impl Pattern {
-    /// Prior probability of this pattern occurring, given last week's pattern.
-    fn prior(&self, prev: Option<Pattern>) -> f64 {
-        match prev {
-            None => {
-                // We don't know the previous pattern, so respond with the average.
-                match self {
-                    Pattern::Decreasing => 0.15,
-                    Pattern::Random => 0.35,
-                    Pattern::SmallSpike => 0.25,
-                    Pattern::LargeSpike => 0.25,
-                }
-            }
-            Some(Pattern::Decreasing) => {
-                match self {
-                    Pattern::Decreasing => 0.05,
-                    Pattern::Random => 0.25,
-                    Pattern::SmallSpike => 0.25,
-                    Pattern::LargeSpike => 0.45,
-                }
-            }
-            Some(Pattern::Random) => {
-                match self {
-                    Pattern::Decreasing => 0.15,
-                    Pattern::Random => 0.20,
-                    Pattern::SmallSpike => 0.35,
-                    Pattern::LargeSpike => 0.30,
-                }
-            }
-            Some(Pattern::SmallSpike) => {
-                match self {
-                    Pattern::Decreasing => 0.15,
-                    Pattern::Random => 0.45,
-                    Pattern::SmallSpike => 0.15,
-                    Pattern::LargeSpike => 0.25,
-                }
-            }
-            Some(Pattern::LargeSpike) => {
-                match self {
-                    Pattern::Decreasing => 0.20,
-                    Pattern::Random => 0.50,
-                    Pattern::SmallSpike => 0.25,
-                    Pattern::LargeSpike => 0.05,
-                }
-            }
+pub use pattern::Pattern;
+
+use node::Node;
+
+/// Run the calculator on the given data, returning a (possibly empty) list
+/// of potential patterns and associated probabilities, sorted in descending
+/// order of likelihood.
+pub fn run(prev_pattern: Option<Pattern>,
+           base_price: u32, prices: Vec<Option<u32>>) -> Vec<(Pattern, f64)> {
+    // Start off with the base set of pattern nodes.
+    let mut nodes = Node::new_set(base_price, prev_pattern);
+
+    // TODO debug flag
+    // println!("\n\nITERATION\n{:#?}", nodes);
+
+    // Iterate through all the prices, constructing and traversing the pattern trees.
+    for price in prices {
+        let mut new_nodes = Vec::new();
+        for node in nodes {
+            new_nodes.extend(node.children(price));
         }
+        nodes = new_nodes;
+        // TODO debug flag
+        // println!("\n\nITERATION\n{:#?}", nodes);
     }
 
-    /// Guess the pattern from a sequence of prices.
-    pub fn guess(last_week: Option<Pattern>, base_price: u32,
-                 prices: impl IntoIterator<Item = u32>) -> Option<HashMap<Pattern, f64>> {
-        let mut prices = prices.into_iter();
-        let mut chances = HashMap::with_capacity(4);
-        chances.insert(Pattern::Decreasing, Pattern::Decreasing.prior(last_week));
-        chances.insert(Pattern::Random, Pattern::Random.prior(last_week));
-        chances.insert(Pattern::SmallSpike, Pattern::SmallSpike.prior(last_week));
-        chances.insert(Pattern::LargeSpike, Pattern::LargeSpike.prior(last_week));
-
-        // Helper macro to normalise the `chances` before returning.
-        macro_rules! done {
-            () => {{
-                let total: f64 = chances.values().sum();
-                for chance in chances.values_mut() {
-                    *chance /= total;
-                }
-                return Some(chances);
-            }}
-        }
-
-        // Helper macro to get the next price, returning if there are no more prices.
-        macro_rules! next {
-            () => {{
-                if let Some(price) = prices.next() {
-                    price
-                } else {
-                    done!();
-                }
-            }}
-        }
-
-        // Helper macro to multiply the base price and round up.
-        macro_rules! mult {
-            ($factor:expr) => {{
-                (base_price as f64 * $factor).ceil() as u32
-            }}
-        }
-
-        // Helper macro to remove a pattern from consideration.
-        macro_rules! eliminate {
-            ($pattern:ident) => {{
-                chances.remove(&Pattern::$pattern)
-                    .expect("Pattern removed twice!");
-            }}
-        }
-
-        // Helper macro to check an invariant.
-        macro_rules! invariant {
-            ($condition:expr) => {{
-                if !$condition {
-                    return None;
-                }
-            }}
-        }
-
-        // Sanity check the base price.
-        invariant!(base_price >= 90);
-        invariant!(base_price <= 110);
-
-        // Check the first price.
-        // Decreasing starts at 85-90%.
-        // Random starts at 90-140% (6/7 of the time) or 60-80% (1/7 of the time).
-        // Small starts 40-90% (7/8 of the time) or 90-140% (1/8 of the time).
-        // Large starts 85-90%.
-        let first = next!();
-        invariant!(first >= mult!(0.40));
-        if first < mult!(0.60) {
-            // If we are in the range 40-60%, this must be a small spike.
-            eliminate!(Decreasing);
-            eliminate!(Random);
-            eliminate!(LargeSpike);
-            done!()
-        } else if first < mult!(0.80) {
-            // XXX: the datamined code implies that the range is inclusive of 0.80 if
-            // this is a random pattern, so there is potentially overlap with the
-            // 0.80-0.85 case. We do not currently handle this.
-
-            // If we are in the range 60-80%, this could be random or small spike.
-            eliminate!(Decreasing);
-            eliminate!(LargeSpike);
-            // Random satisfies this only 1/7 of the time.
-            *chances.get_mut(&Pattern::Random).unwrap() /= 7.0;
-            // Small spike satisfies this only 7/8 of the time, and then has to
-            // roll within 60-80 rather than 40-90 more generally.
-            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= (7.0 / 8.0) * (20.0 / 50.0);
-
-            // Now inspect the following prices.
-            // Small spike will decrease by 3-5% 0-6 times.
-            // Random will decrease by 4-10% 1-2 times.
-            let mut min = first as f64 / base_price as f64;
-            let mut rand_thresh = min;
-            let mut spike_thresh = min;
-            let mut max = min;
-            let mut price = next!();
-            min -= 0.10;
-            rand_thresh -= 0.05;
-            spike_thresh -= 0.04;
-            max -= 0.03;
-            invariant!(price >= mult!(min));
-            if price < mult!(rand_thresh) {
-                // Big decrease, must be random.
-                eliminate!(SmallSpike);
-                done!()
-            } else if price > mult!(max) {
-                // Zero decreases, must be a spike.
-                eliminate!(Random);
-                done!()
-            } else if price > mult!(spike_thresh) {
-                // Tiny decrease, must be a spike.
-                eliminate!(Random);
-                done!()
-            }
-            // At least one decrease, which was in the overlap range of 4-5%.
-            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= 5.0 / 6.0;
-            // The following two adjustments assume uniform distribution
-            // over the decrease ranges, and account for the fact that
-            // the decrease was in 4-5% which is more likely on small
-            // spike (1/2 chance) than random (2/6 chance).
-            *chances.get_mut(&Pattern::SmallSpike).unwrap() /= 2.0;
-            *chances.get_mut(&Pattern::Random).unwrap() *= 2.0 / 6.0;
-            // Check if there are exactly one or two decreases.
-            let mut decreases = 1;
-            for i in 2..=3 {
-                price = next!();
-                min -= 0.10;
-                rand_thresh -= 0.05;
-                spike_thresh -= 0.04;
-                max -= 0.03;
-                invariant!(price >= mult!(min));
-                if price < mult!(rand_thresh) {
-                    // Big decrease, must be random.
-                    eliminate!(SmallSpike);
-                    done!()
-                } else if price > mult!(max) {
-                    // One or two decreases, still unclear.
-                    break;
-                } else if price > mult!(spike_thresh) {
-                    // Tiny decrease, must be a spike.
-                    eliminate!(Random);
-                    done!()
-                }
-                // Decrease between 4-5%. Adjust for number of decreases.
-                let factor = (6 - i) as f64 / (7 - i) as f64;
-                *chances.get_mut(&Pattern::SmallSpike).unwrap() *= factor;
-                *chances.get_mut(&Pattern::Random).unwrap() /= 2.0;
-                decreases = i;
-                // Now adjust for size of decrease.
-                *chances.get_mut(&Pattern::SmallSpike).unwrap() /= 2.0;
-                *chances.get_mut(&Pattern::Random).unwrap() *= 2.0 / 6.0;
-            }
-
-            if decreases > 2 {
-                // There were more than two decreases, so must be a spike.
-                eliminate!(Random);
-                done!()
-            }
-
-            // There were one or two decreases, still unclear.
-            // This price was the first increase. It will always be 90-140%.
-            invariant!(price >= mult!(0.90));
-            invariant!(price < mult!(1.40));
-
-            // The next price may go back down if random (1/7 chance),
-            // or can be 90-140% again in either case.
-            price = next!();
-            if price < mult!(0.90) {
-                eliminate!(SmallSpike);
-                done!()
-            } else {
-                *chances.get_mut(&Pattern::Random).unwrap() *= 6.0 / 7.0;
-            }
-
-            // The next price will tell us for sure. If this is a small spike,
-            // it will be at least 140%.
-            price = next!();
-            if price >= mult!(1.40) {
-                eliminate!(Random)
-            } else {
-                eliminate!(SmallSpike);
-            }
-            done!()
-        } else if first < mult!(0.85) {
-            // See previous case.
-            if first == mult!(0.80) {
-                eprintln!("Warning: boundary condition.\n\
-                          The first price is exactly 80% of the base price; \
-                          this results in an ambiguous state that this tool \
-                          cannot currently solve. The below estimates may not \
-                          be accurate.");
-            }
-
-            // Only small spike can produce 80-85%.
-            eliminate!(Decreasing);
-            eliminate!(Random);
-            eliminate!(LargeSpike);
-            done!()
-        } else if first < mult!(0.90) {
-            // XXX: the datamined code implies that the range is inclusive of 0.90
-            // for all three possible patterns here, so there is potentially
-            // overlap with the 0.90-1.40 case. We do not currently handle this.
-
-            // If we are in the range 85-90%, this could be anything except random.
-            eliminate!(Random);
-            // Small spike satisfies this only 7/8 of the time, and then has to
-            // roll within 85-90 rather than 40-90 more generally.
-            *chances.get_mut(&Pattern::SmallSpike).unwrap() *= (7.0 / 8.0) * (5.0 / 50.0);
-
-            // Now inspect the following prices.
-            // We expect to decrease by 3-5% each time.
-            // This will happen 0-6 times for a spike, or indefinitely for decreasing.
-            let mut min = first as f64 / base_price as f64;
-            let mut max = min;
-            let mut spike = false;
-            let mut price = 0;
-            for i in 1..=6 {
-                min -= 0.05;
-                max -= 0.03;
-                price = next!();
-                invariant!(price >= mult!(min));
-                if price > mult!(max) {
-                    spike = true;
-                    break;
-                }
-                // Reduce spike chances proportionally on each successive decrease.
-                let factor = (6 - i) as f64 / (7 - i) as f64;
-                *chances.get_mut(&Pattern::SmallSpike).unwrap() *= factor;
-                *chances.get_mut(&Pattern::LargeSpike).unwrap() *= factor;
-            }
-
-            if !spike {
-                // No spike; this is decreasing.
-                eliminate!(SmallSpike);
-                eliminate!(LargeSpike);
-                done!()
-            }
-
-            // Spike! But which one?
-            eliminate!(Decreasing);
-            invariant!(price >= mult!(0.90));
-            invariant!(price < mult!(1.40));
-            price = next!();
-            invariant!(price >= mult!(0.90));
-            if price < mult!(1.40) {
-                // Small spike.
-                eliminate!(LargeSpike);
-            } else {
-                // Large spike.
-                eliminate!(SmallSpike);
-            }
-            done!()
-        } else if first < mult!(1.40) {
-            // See previous case.
-            if first == mult!(0.90) {
-                eprintln!("Warning: boundary condition.\n\
-                          The first price is exactly 90% of the base price; \
-                          this results in an ambiguous state that this tool \
-                          cannot currently solve. The below estimates may not \
-                          be accurate.");
-            }
-
-            // If we are in the range 90-140%, it could be random or small spike.
-            eliminate!(Decreasing);
-            eliminate!(LargeSpike);
-            // Random satisfies this only 6/7 of the time.
-            *chances.get_mut(&Pattern::Random).unwrap() *= 6.0 / 7.0;
-            // Small spike satisfies this only 1/8 of the time.
-            *chances.get_mut(&Pattern::SmallSpike).unwrap() /= 8.0;
-
-            // If this is random, the next price is 60-80% with probability 1/6,
-            // or 90-140% again with probability 5/6. If this is small spike,
-            // the next price is definitely 90-140%.
-            let mut price = next!();
-            if price < mult!(0.90) {
-                // Random.
-                eliminate!(SmallSpike);
-                done!()
-            } else {
-                *chances.get_mut(&Pattern::Random).unwrap() *= 5.0 / 6.0;
-            }
-
-            // The next price will tell us for sure.
-            // Small spike will be at least 140%, random will be at most 140%.
-            price = next!();
-            if price < mult!(1.40) {
-                // Random.
-                eliminate!(SmallSpike);
-            } else {
-                // Small spike.
-                eliminate!(Random);
-            }
-            done!()
-        } else {
-            // Invalid first price.
-            return None;
-        }
+    // Aggregate the resulting probabilities.
+    let mut probabilities: HashMap<Pattern, f64> = HashMap::with_capacity(4);
+    for node in nodes {
+        let (pattern, prob) = node.value();
+        *probabilities.entry(pattern).or_insert(0.0) += prob;
     }
+
+    // Normalise the distribution.
+    let total: f64 = probabilities.values().sum();
+    for prob in probabilities.values_mut() {
+        *prob /= total;
+    }
+
+    // Sort descending.
+    let mut results: Vec<(Pattern, f64)> = probabilities.into_iter().collect();
+    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+    return results;
 }
