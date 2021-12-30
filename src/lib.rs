@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 mod node;
 mod pattern;
+#[cfg(test)]
+mod tests;
 
 pub use pattern::Pattern;
 

@@ -1,0 +1,20 @@
+---
+source: src/tests.rs
+assertion_line: 62
+expression: results
+
+---
+[
+    (
+        Decreasing,
+        0.7943262411347517,
+    ),
+    (
+        LargeSpike,
+        0.18912529550827428,
+    ),
+    (
+        SmallSpike,
+        0.016548463356974012,
+    ),
+]

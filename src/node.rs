@@ -59,7 +59,7 @@ impl<F> NodeFactory for ConditionalLengthNode<F>
         after.lengths = prev.lengths.clone();
         after.lengths.push(prev.length);
 
-        let (min_len, max_len) = (self.length_func)(&prev.lengths);
+        let (min_len, max_len) = (self.length_func)(&after.lengths);
         after.min_len = min_len;
         after.max_len = max_len;
 
@@ -113,6 +113,11 @@ impl Debug for Node {
 impl Node {
     /// Get a fresh collection of starting nodes, representing all patterns.
     pub fn new_set(base_price: u32, prev_pattern: Option<Pattern>) -> Vec<Self> {
+        // Sanity-check the base price.
+        if base_price < 90 || base_price > 110 {
+            return Vec::new();
+        }
+
         let mut nodes = Vec::new();
         nodes.push(Node::decreasing(base_price, prev_pattern));
         nodes.extend(Node::random(base_price, prev_pattern));
@@ -172,8 +177,8 @@ impl Node {
             name: "Decreasing".into(),
             base_price,
             prob: Pattern::Decreasing.prior(prev_pattern),
-            min_len: MAX_HALF_DAYS,
-            max_len: MAX_HALF_DAYS,
+            min_len: MAX_HALF_DAYS + 1,  // +1 so we never try to construct the next phase.
+            max_len: MAX_HALF_DAYS + 1,
             min_fac: 0.85,
             max_fac: 0.90,
             decrement: Some((0.03, 0.05)),
@@ -302,6 +307,7 @@ impl Node {
             next_phase: None,
         }, remaining_length);
 
+        // TODO: account for weird max-rate dependencies.
         let mut spike =
             Node::chain(Pattern::SmallSpike, "Spike", base_price,
                         final_decreasing, &vec![
@@ -423,7 +429,7 @@ impl Node {
     /// originally, we can only provide a lower and upper bound on the true factor.
     fn factor_of(&self, price: u32) -> (f64, f64) {
         let max = price as f64 / self.base_price as f64;
-        let min = (price-1) as f64 / self.base_price as f64;
+        let min = (price as f64 - 1.0) / self.base_price as f64;
         (min, max)
     }
 
@@ -492,6 +498,6 @@ impl Node {
 /// Calculate the remaining number of half-days.
 fn remaining_length(lengths: &Vec<i32>) -> (i32, i32) {
     let total: i32 = lengths.iter().sum();
-    let remaining = MAX_HALF_DAYS - total;
+    let remaining = MAX_HALF_DAYS - total + 1;
     (remaining, remaining)
 }

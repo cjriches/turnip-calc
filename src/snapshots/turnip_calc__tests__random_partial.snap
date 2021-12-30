@@ -1,0 +1,16 @@
+---
+source: src/tests.rs
+assertion_line: 51
+expression: results
+
+---
+[
+    (
+        Random,
+        0.888888888888889,
+    ),
+    (
+        SmallSpike,
+        0.11111111111111112,
+    ),
+]
