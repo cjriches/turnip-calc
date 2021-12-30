@@ -4,7 +4,7 @@ use std::rc::Rc;
 mod factory;
 
 use crate::pattern::Pattern;
-use factory::{ConditionalLengthNode, NodeFactory, SimpleNode};
+use factory::{ConditionalLengthNode, NodeFactory, SimpleNode, TerminatorNode};
 
 const MAX_HALF_DAYS: i32 = 12;
 const FLOAT_CMP_EPSILON: f64 = 0.0001;
@@ -119,14 +119,14 @@ impl Node {
             name: "Decreasing".into(),
             base_price,
             prob: Pattern::Decreasing.prior(prev_pattern),
-            min_len: MAX_HALF_DAYS + 1,  // +1 so we never try to construct the next phase.
-            max_len: MAX_HALF_DAYS + 1,
+            min_len: MAX_HALF_DAYS,
+            max_len: MAX_HALF_DAYS,
             min_fac: 0.85,
             max_fac: 0.90,
             decrement: Some((0.03, 0.05)),
             length: 1,
             lengths: vec![],
-            next_phase: None,
+            next_phase: TerminatorNode::new(),
         }
     }
 
@@ -144,7 +144,7 @@ impl Node {
             decrement: None,
             length: 1,
             lengths: vec![],
-            next_phase: None,
+            next_phase: TerminatorNode::new(),
         }, remaining_length);
 
         // dec_1 has length 2 or 3, dec_2 has length 5 - dec_1.
@@ -246,7 +246,7 @@ impl Node {
             decrement: Some((0.03, 0.05)),
             length: 1,
             lengths: vec![],
-            next_phase: None,
+            next_phase: TerminatorNode::new(),
         }, remaining_length);
 
         // TODO: account for weird max-rate dependencies.
@@ -294,7 +294,7 @@ impl Node {
             decrement: None,
             length: 1,
             lengths: vec![],
-            next_phase: None,
+            next_phase: TerminatorNode::new(),
         }, remaining_length);
 
         let spike = SimpleNode::new(
@@ -440,6 +440,6 @@ impl Node {
 /// Calculate the remaining number of half-days.
 fn remaining_length(lengths: &Vec<i32>) -> (i32, i32) {
     let total: i32 = lengths.iter().sum();
-    let remaining = MAX_HALF_DAYS - total + 1;
+    let remaining = MAX_HALF_DAYS - total;
     (remaining, remaining)
 }
