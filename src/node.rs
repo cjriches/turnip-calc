@@ -27,6 +27,7 @@ impl NextNode for SimpleNode {
         let mut after = self.after.clone();
 
         after.prob *= prev.prob * chance;
+        after.lengths = prev.lengths.clone();
         after.lengths.push(prev.length);
 
         return after;
@@ -54,6 +55,7 @@ impl<F> NextNode for ConditionalLengthNode<F>
         let mut after = self.after.clone();
 
         after.prob *= prev.prob * chance;
+        after.lengths = prev.lengths.clone();
         after.lengths.push(prev.length);
 
         let (min_len, max_len) = (self.length_func)(&prev.lengths);
@@ -68,6 +70,8 @@ impl<F> NextNode for ConditionalLengthNode<F>
 pub struct Node {
     /// The pattern represented by this node.
     pattern: Pattern,
+    /// A name for debug identification purposes.
+    name: String,
     /// The base price (turnip buying price on Sunday).
     base_price: u32,
     /// The current probability.
@@ -92,10 +96,10 @@ pub struct Node {
 
 impl Debug for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} {:.2}\nLength: {}\nRemaining Length: ({}, {})\n\
+        write!(f, "{:?} {:.2}\n{}\nLength: {}\nRemaining Length: ({}, {})\n\
                    Previous Lengths: {:?}\nFactors: ({}, {})\nDecrement: {:?}",
-               self.pattern, self.prob, self.length, self.min_len, self.max_len,
-               self.lengths, self.min_fac, self.max_fac, self.decrement)
+               self.pattern, self.prob, self.name, self.length, self.min_len,
+               self.max_len, self.lengths, self.min_fac, self.max_fac, self.decrement)
     }
 }
 
@@ -146,6 +150,7 @@ impl Node {
     fn decreasing(base_price: u32, prev_pattern: Option<Pattern>) -> Self {
         Node {
             pattern: Pattern::Decreasing,
+            name: "Decreasing".into(),
             base_price,
             prob: Pattern::Decreasing.prior(prev_pattern),
             min_len: MAX_HALF_DAYS,
@@ -163,6 +168,7 @@ impl Node {
     fn random(base_price: u32, prev_pattern: Option<Pattern>) -> Vec<Self> {
         let final_increasing = ConditionalLengthNode::new(Node {
             pattern: Pattern::Random,
+            name: "Final Increasing".into(),
             base_price,
             prob: 1.0,
             min_len: -1,
@@ -176,13 +182,15 @@ impl Node {
         }, remaining_length);
 
         let dec_2_length = |lengths: &Vec<i32>| {
-            let dec_1_length = lengths.get(1).unwrap();
+            let dec_1_length = *lengths.get(1).unwrap();
+            assert!(dec_1_length == 2 || dec_1_length == 3);
             let length = 5 - dec_1_length;
             (length, length)
         };
 
         let second_decreasing = ConditionalLengthNode::new(Node {
             pattern: Pattern::Random,
+            name: "Second Decreasing".into(),
             base_price,
             prob: 1.0,
             min_len: -1,
@@ -196,13 +204,15 @@ impl Node {
         }, dec_2_length);
 
         let inc_2_length = |lengths: &Vec<i32>| {
-            let inc_1_length = lengths.get(0).unwrap();
+            let inc_1_length = *lengths.get(0).unwrap();
+            assert!(inc_1_length >= 0 && inc_1_length <= 6);
             let max_length = 7 - inc_1_length;
             (1, max_length)
         };
 
         let second_increasing = ConditionalLengthNode::new(Node {
             pattern: Pattern::Random,
+            name: "Second Increasing".into(),
             base_price,
             prob: 1.0,
             min_len: -1,
@@ -217,6 +227,7 @@ impl Node {
 
         let mut initial_decreasing = Node {
             pattern: Pattern::Random,
+            name: "Initial Decreasing".into(),
             base_price,
             prob: 1.0,
             min_len: 2,
@@ -233,6 +244,7 @@ impl Node {
 
         let initial_increasing = Node {
             pattern: Pattern::Random,
+            name: "Initial Increasing".into(),
             base_price,
             prob: prior * 6.0 / 7.0,
             min_len: 1,
@@ -255,6 +267,7 @@ impl Node {
     fn small_spike(base_price: u32, prev_pattern: Option<Pattern>) -> Vec<Self> {
         let final_decreasing = ConditionalLengthNode::new(Node {
             pattern: Pattern::SmallSpike,
+            name: "Final Decreasing".into(),
             base_price,
             prob: 1.0,
             min_len: -1,
@@ -268,7 +281,7 @@ impl Node {
         }, remaining_length);
 
         let mut spike =
-            Node::chain(Pattern::SmallSpike, base_price,
+            Node::chain(Pattern::SmallSpike, "Spike", base_price,
                         final_decreasing, &vec![
                     (0.90, 1.40), (0.90, 1.40),
                     (1.40, 2.00), (1.40, 2.00), (1.40, 2.00)
@@ -278,6 +291,7 @@ impl Node {
 
         let initial_decreasing = Node {
             pattern: Pattern::SmallSpike,
+            name: "Initial Decreasing".into(),
             base_price,
             prob: prior * 7.0 / 8.0,
             min_len: 1,
@@ -297,8 +311,9 @@ impl Node {
 
     /// Construct a new Large Spike pattern.
     fn large_spike(base_price: u32, prev_pattern: Option<Pattern>) -> Self {
-        let final_decrease = ConditionalLengthNode::new(Node {
+        let final_decreasing = ConditionalLengthNode::new(Node {
             pattern: Pattern::LargeSpike,
+            name: "Final Decreasing".into(),
             base_price,
             prob: 1.0,
             min_len: -1,
@@ -311,20 +326,16 @@ impl Node {
             next_node: None,
         }, remaining_length);
 
-        let sharp_decrease = SimpleNode::new(
-            Node::chain(Pattern::LargeSpike, base_price,
-                        final_decrease, &vec![
+        let spike = SimpleNode::new(
+            Node::chain(Pattern::LargeSpike, "Spike", base_price,
+                        final_decreasing, &vec![
+                    (0.90, 1.40), (1.40, 2.00), (2.00, 6.00),
                     (1.40, 2.00), (0.90, 1.40)
                 ]));
 
-        let sharp_increase = SimpleNode::new(
-            Node::chain(Pattern::LargeSpike, base_price,
-                        sharp_decrease, &vec![
-                    (0.90, 1.40), (1.40, 2.00), (2.00, 6.00)
-                ]));
-
-        let initial_decrease = Node {
+        let initial_decreasing = Node {
             pattern: Pattern::LargeSpike,
+            name: "Initial Decreasing".into(),
             base_price,
             prob: Pattern::LargeSpike.prior(prev_pattern),
             min_len: 1,
@@ -334,23 +345,24 @@ impl Node {
             decrement: Some((0.03, 0.05)),
             length: 1,
             lengths: vec![],
-            next_node: sharp_increase,
+            next_node: spike,
         };
 
-        return initial_decrease;
+        return initial_decreasing;
     }
 
     /// Construct a chain of nodes all with the given pattern and base price.
     /// The final node in the chain will have the given `after`, and their factors will
     /// be set according to the supplied vector.
-    fn chain(pattern: Pattern, base_price: u32, after: Option<Rc<dyn NextNode>>,
-             factors: &Vec<(f64, f64)>) -> Self {
+    fn chain(pattern: Pattern, name: &str, base_price: u32,
+             after: Option<Rc<dyn NextNode>>, factors: &Vec<(f64, f64)>) -> Self {
         assert!(factors.len() > 0);
 
         // Do the last factor.
         let (min_fac, max_fac) = factors.last().unwrap();  // Unwrap guaranteed safe by initial assert.
         let mut node = Node {
             pattern,
+            name: name.into(),
             base_price,
             prob: 1.0,
             min_len: 1,
@@ -367,6 +379,7 @@ impl Node {
         for (min_fac, max_fac) in factors.iter().rev().skip(1) {
             node = Node {
                 pattern,
+                name: name.into(),
                 base_price,
                 prob: 1.0,
                 min_len: 1,
@@ -394,9 +407,13 @@ impl Node {
                 match price {
                     Some(p) => {
                         // We have a decrement operation and a known price.
-                        // FIXME: this is resulting in rounding errors.
-                        let factor = p as f64 / self.base_price as f64;
-                        (factor - dec_max, factor - dec_min)
+
+                        // We must be careful of rounding when working back from
+                        // the price to the factor: the true factor could be
+                        // anywhere from price/base to (price-1)/base.
+                        let factor_max = p as f64 / self.base_price as f64;
+                        let factor_min = (p-1) as f64 / self.base_price as f64;
+                        (factor_min - dec_max, factor_max - dec_min)
                     }
                     None => {
                         // We have a decrement operation but unknown price.
@@ -419,6 +436,7 @@ impl Node {
 
         Node {
             pattern: self.pattern,
+            name: self.name.clone(),
             base_price: self.base_price,
             prob: self.prob * chance,
             min_len: self.min_len - 1,

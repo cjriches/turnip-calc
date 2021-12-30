@@ -14,6 +14,7 @@ const PATTERNS: [&str; 4] = [DECREASING, RANDOM, SMALL_SPIKE, LARGE_SPIKE];
 const LAST_WEEK: &str = "last_week";
 const BASE_PRICE: &str = "BASE_PRICE";
 const PRICES: &str = "PRICES";
+const DEBUG: &str = "DEBUG";
 
 fn cli() -> App<'static, 'static> {
     // Hack to make the build dirty when the toml changes.
@@ -48,6 +49,11 @@ fn cli() -> App<'static, 'static> {
             .multiple(true)
             .min_values(0)
             .max_values(12))
+        .arg(Arg::with_name(DEBUG)
+            .help("Enable debug dumps.")
+            .short("d")
+            .long("debug")
+            .takes_value(false))
 }
 
 fn main() {
@@ -70,8 +76,9 @@ fn main() {
     });
     // TODO allow missing prices with '?'
     let prices = prices.into_iter().map(Some).collect();
+    let debug = args.is_present(DEBUG);
 
-    let results = turnip_calc::run(last_week, base_price, prices);
+    let results = turnip_calc::run(last_week, base_price, prices, debug);
     if results.is_empty() {
         println!("These prices did not match any known pattern. Either your \
                   numbers are wrong, or there is a bug.");
