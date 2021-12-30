@@ -4,6 +4,7 @@ use std::rc::Rc;
 use crate::pattern::Pattern;
 
 const MAX_HALF_DAYS: i32 = 12;
+const FLOAT_CMP_EPSILON: f64 = 0.0001;
 
 /// This allows us to swap in different methods for constructing the next Node
 /// in a polymorphic fashion.
@@ -123,7 +124,12 @@ impl Node {
     pub fn children(self, price: Option<u32>) -> Vec<Self> {
         // Ensure that the price is within the given range.
         if let Some(p) = price {
-            if p < self.mult(self.min_fac) || p > self.mult(self.max_fac) {
+            let (factor_min, factor_max) = self.factor_of(p);
+            // Make the comparison a little more forgiving by epsilon, since
+            // floating point errors will hurt us otherwise.
+            if factor_max + FLOAT_CMP_EPSILON < self.min_fac
+                    || factor_min - FLOAT_CMP_EPSILON > self.max_fac
+            {
                 return vec![];
             }
         }
@@ -400,9 +406,13 @@ impl Node {
         return node;
     }
 
-    /// Multiply the base price by the given factor and round up.
-    fn mult(&self, factor: f64) -> u32 {
-        (self.base_price as f64 * factor).ceil() as u32
+    /// Get the approximate factor of the given price against our base price.
+    /// Due to the rounding involved in producing the integer price from the factor
+    /// originally, we can only provide a lower and upper bound on the true factor.
+    fn factor_of(&self, price: u32) -> (f64, f64) {
+        let max = price as f64 / self.base_price as f64;
+        let min = (price-1) as f64 / self.base_price as f64;
+        (min, max)
     }
 
     /// Get the next node in this current phase.
@@ -412,12 +422,7 @@ impl Node {
                 match price {
                     Some(p) => {
                         // We have a decrement operation and a known price.
-
-                        // We must be careful of rounding when working back from
-                        // the price to the factor: the true factor could be
-                        // anywhere from price/base to (price-1)/base.
-                        let factor_max = p as f64 / self.base_price as f64;
-                        let factor_min = (p-1) as f64 / self.base_price as f64;
+                        let (factor_min, factor_max) = self.factor_of(p);
                         (factor_min - dec_max, factor_max - dec_min)
                     }
                     None => {
