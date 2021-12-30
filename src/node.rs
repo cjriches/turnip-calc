@@ -6,24 +6,23 @@ use crate::pattern::Pattern;
 const MAX_HALF_DAYS: i32 = 12;
 const FLOAT_CMP_EPSILON: f64 = 0.0001;
 
-/// This allows us to swap in different methods for constructing the next Node
-/// in a polymorphic fashion.
-trait NextNode {
+/// This allows us to swap in different methods for constructing the following phase.
+trait NodeFactory {
     fn after(&self, prev: &Node, chance: f64) -> Node;
 }
 
-/// The simplest NextNode, which only passes on the probability and lengths.
+/// The simplest NodeFactory, which only passes on the probability and previous lengths.
 struct SimpleNode {
     after: Node,
 }
 
 impl SimpleNode {
-    fn new(after: Node) -> Option<Rc<dyn NextNode>> {
+    fn new(after: Node) -> Option<Rc<dyn NodeFactory>> {
         Some(Rc::new(SimpleNode { after }))
     }
 }
 
-impl NextNode for SimpleNode {
+impl NodeFactory for SimpleNode {
     fn after(&self, prev: &Node, chance: f64) -> Node {
         let mut after = self.after.clone();
 
@@ -35,7 +34,8 @@ impl NextNode for SimpleNode {
     }
 }
 
-/// A NextNode which sets the lengths from previous lengths.
+/// A NodeFactory which additionally sets the phase lengths from previous
+/// phase lengths via an arbitrary function.
 struct ConditionalLengthNode<F> {
     after: Node,
     length_func: F,
@@ -44,12 +44,12 @@ struct ConditionalLengthNode<F> {
 impl<F: 'static> ConditionalLengthNode<F>
     where F: Fn(&Vec<i32>) -> (i32, i32)
 {
-    fn new(after: Node, length_func: F) -> Option<Rc<dyn NextNode>> {
+    fn new(after: Node, length_func: F) -> Option<Rc<dyn NodeFactory>> {
         Some(Rc::new(ConditionalLengthNode { after, length_func }))
     }
 }
 
-impl<F> NextNode for ConditionalLengthNode<F>
+impl<F> NodeFactory for ConditionalLengthNode<F>
     where F: Fn(&Vec<i32>) -> (i32, i32)
 {
     fn after(&self, prev: &Node, chance: f64) -> Node {
@@ -67,6 +67,12 @@ impl<F> NextNode for ConditionalLengthNode<F>
     }
 }
 
+/// A node in a pattern tree.
+/// To avoid verbose specification of the entire tree for each pattern (thousands
+/// of nodes), we represent an entire phase in one struct.
+/// This node will continue on to others in the same phase via the `next` method,
+/// or onto the next phase via the `after` method (which delegates to the contained
+/// `NodeFactory` implementation).
 #[derive(Clone)]
 pub struct Node {
     /// The pattern represented by this node.
@@ -75,7 +81,7 @@ pub struct Node {
     name: String,
     /// The base price (turnip buying price on Sunday).
     base_price: u32,
-    /// The current probability.
+    /// The probability of reaching this node.
     prob: f64,
     /// The minimum length of this phase before the next one.
     min_len: i32,
@@ -87,12 +93,12 @@ pub struct Node {
     max_fac: f64,
     /// The optional range to decrease `min_fac` and `max_fac` by each iteration.
     decrement: Option<(f64, f64)>,
-    /// The current length of this phase.
+    /// The length of this phase so far.
     length: i32,
     /// The lengths of all previous phases.
     lengths: Vec<i32>,
-    /// The node that appears after this one.
-    next_node: Option<Rc<dyn NextNode>>,
+    /// The phase that appears after this one.
+    next_phase: Option<Rc<dyn NodeFactory>>,
 }
 
 impl Debug for Node {
@@ -122,20 +128,22 @@ impl Node {
 
     /// Given the next price, what possible children are there?
     pub fn children(self, price: Option<u32>) -> Vec<Self> {
-        // Ensure that the price is within the given range.
+        // If we have a known price, ensure it is within the given range.
         if let Some(p) = price {
             let (factor_min, factor_max) = self.factor_of(p);
-            // Make the comparison a little more forgiving by epsilon, since
-            // floating point errors will hurt us otherwise.
+            // Make the comparison a little more forgiving, since floating
+            // point errors will hurt us otherwise.
             if factor_max + FLOAT_CMP_EPSILON < self.min_fac
                     || factor_min - FLOAT_CMP_EPSILON > self.max_fac
             {
+                // Price doesn't match; no children returned.
                 return vec![];
             }
         }
-        // Adjust for situations where Pattern A could be in 50-100 while Pattern B
-        // could be in 60-70; if our observed price is in 60-70, then Pattern B
-        // is more likely than Pattern A given no other information.
+
+        // Adjust for situations where e.g. Pattern A could be in 50-100% while
+        // Pattern B could be in 60-70%; if our observed price is in 60-70%,
+        // then Pattern B is more likely than Pattern A given no other information.
         // This is only applicable when we have a known price.
         let chance = if price.is_some() {
             1.0 / (self.max_fac - self.min_fac)
@@ -143,7 +151,7 @@ impl Node {
             1.0
         };
 
-        // If we're below the minimum length, return the next node.
+        // If we're below the minimum length, return the next node in this phase.
         if self.min_len > 1 {
             return vec![self.next(price, chance)];
         }
@@ -153,7 +161,7 @@ impl Node {
             return vec![self.next(price, chance), self.after(chance)];
         }
 
-        // If we're at max length, return `after`.
+        // If we're at max length, return the next phase.
         return vec![self.after(chance)];
     }
 
@@ -171,7 +179,7 @@ impl Node {
             decrement: Some((0.03, 0.05)),
             length: 1,
             lengths: vec![],
-            next_node: None,
+            next_phase: None,
         }
     }
 
@@ -182,16 +190,17 @@ impl Node {
             name: "Final Increasing".into(),
             base_price,
             prob: 1.0,
-            min_len: -1,
+            min_len: -1,  // Lengths will be overwritten by ConditionalLengthNode.
             max_len: -1,
             min_fac: 0.90,
             max_fac: 1.40,
             decrement: None,
             length: 1,
             lengths: vec![],
-            next_node: None,
+            next_phase: None,
         }, remaining_length);
 
+        // dec_1 has length 2 or 3, dec_2 has length 5 - dec_1.
         let dec_2_length = |lengths: &Vec<i32>| {
             let dec_1_length = *lengths.get(1).unwrap();
             assert!(dec_1_length == 2 || dec_1_length == 3);
@@ -211,9 +220,11 @@ impl Node {
             decrement: Some((0.04, 0.10)),
             length: 1,
             lengths: vec![],
-            next_node: final_increasing,
+            next_phase: final_increasing,
         }, dec_2_length);
 
+        // inc_1 has length 0-6, inc_2 has length up to (7 - inc_1). The remainder
+        // will be taken by final_inc.
         let inc_2_length = |lengths: &Vec<i32>| {
             let inc_1_length = *lengths.get(0).unwrap();
             assert!(inc_1_length >= 0 && inc_1_length <= 6);
@@ -233,7 +244,7 @@ impl Node {
             decrement: None,
             length: 1,
             lengths: vec![],
-            next_node: second_decreasing,
+            next_phase: second_decreasing,
         }, inc_2_length);
 
         let mut initial_decreasing = Node {
@@ -248,7 +259,7 @@ impl Node {
             decrement: Some((0.04, 0.10)),
             length: 1,
             lengths: vec![],
-            next_node: second_increasing,
+            next_phase: second_increasing,
         };
 
         let prior = Pattern::Random.prior(prev_pattern);
@@ -257,7 +268,7 @@ impl Node {
             pattern: Pattern::Random,
             name: "Initial Increasing".into(),
             base_price,
-            prob: prior * 6.0 / 7.0,
+            prob: prior * 6.0 / 7.0,  // 6/7 chance for this phase to occur.
             min_len: 1,
             max_len: 6,
             min_fac: 0.90,
@@ -265,11 +276,11 @@ impl Node {
             decrement: None,
             length: 1,
             lengths: vec![],
-            next_node: SimpleNode::new(initial_decreasing.clone()),
+            next_phase: SimpleNode::new(initial_decreasing.clone()),
         };
 
-        initial_decreasing.prob = prior / 7.0;
-        initial_decreasing.lengths.push(0);
+        initial_decreasing.prob = prior / 7.0;  // 1/7 chance to skip first phase and start here.
+        initial_decreasing.lengths.push(0);  // Conceptually, the first phase happened with length 0.
 
         return vec![initial_increasing, initial_decreasing];
     }
@@ -288,7 +299,7 @@ impl Node {
             decrement: Some((0.03, 0.05)),
             length: 1,
             lengths: vec![],
-            next_node: None,
+            next_phase: None,
         }, remaining_length);
 
         let mut spike =
@@ -304,7 +315,7 @@ impl Node {
             pattern: Pattern::SmallSpike,
             name: "Initial Decreasing".into(),
             base_price,
-            prob: prior * 7.0 / 8.0,
+            prob: prior * 7.0 / 8.0,  // 7/8 chance for this phase to occur.
             min_len: 1,
             max_len: 7,
             min_fac: 0.40,
@@ -312,10 +323,11 @@ impl Node {
             decrement: Some((0.03, 0.05)),
             length: 1,
             lengths: vec![],
-            next_node: SimpleNode::new(spike.clone()),
+            next_phase: SimpleNode::new(spike.clone()),
         };
 
-        spike.prob = prior / 8.0;
+        spike.prob = prior / 8.0;  // 1/8 chance to skip the first phase and start here.
+        spike.lengths.push(0);  // Conceptually, the first phase happened with length 0.
 
         return vec![initial_decreasing, spike];
     }
@@ -334,7 +346,7 @@ impl Node {
             decrement: None,
             length: 1,
             lengths: vec![],
-            next_node: None,
+            next_phase: None,
         }, remaining_length);
 
         let spike = SimpleNode::new(
@@ -356,21 +368,21 @@ impl Node {
             decrement: Some((0.03, 0.05)),
             length: 1,
             lengths: vec![],
-            next_node: spike,
+            next_phase: spike,
         };
 
         return initial_decreasing;
     }
 
-    /// Construct a chain of nodes all with the given pattern and base price.
-    /// The final node in the chain will have the given `after`, and their factors will
-    /// be set according to the supplied vector.
+    /// Construct a chain of nodes all with the given pattern, name, and base price.
+    /// The final node in the chain will have the given `next_phase`.
+    /// The factors of each node will be set according to the supplied vector.
     fn chain(pattern: Pattern, name: &str, base_price: u32,
-             after: Option<Rc<dyn NextNode>>, factors: &Vec<(f64, f64)>) -> Self {
+             next_phase: Option<Rc<dyn NodeFactory>>, factors: &Vec<(f64, f64)>) -> Self {
         assert!(factors.len() > 0);
 
-        // Do the last factor.
-        let (min_fac, max_fac) = factors.last().unwrap();  // Unwrap guaranteed safe by initial assert.
+        // Do the last node.
+        let (min_fac, max_fac) = factors.last().unwrap();
         let mut node = Node {
             pattern,
             name: name.into(),
@@ -383,10 +395,10 @@ impl Node {
             decrement: None,
             length: 1,
             lengths: vec![],
-            next_node: after,
+            next_phase,
         };
 
-        // Now iterate over the rest.
+        // Now iterate over the rest, wrapping the previous each time.
         for (min_fac, max_fac) in factors.iter().rev().skip(1) {
             node = Node {
                 pattern,
@@ -400,13 +412,13 @@ impl Node {
                 decrement: None,
                 length: 1,
                 lengths: vec![],
-                next_node: SimpleNode::new(node),
+                next_phase: SimpleNode::new(node),
             };
         }
         return node;
     }
 
-    /// Get the approximate factor of the given price against our base price.
+    /// Get the approximate factor of the given price compared to our base price.
     /// Due to the rounding involved in producing the integer price from the factor
     /// originally, we can only provide a lower and upper bound on the true factor.
     fn factor_of(&self, price: u32) -> (f64, f64) {
@@ -417,6 +429,7 @@ impl Node {
 
     /// Get the next node in this current phase.
     fn next(&self, price: Option<u32>, mut chance: f64) -> Self {
+        // Determine the factor range of the next node.
         let (min_fac, max_fac) = match self.decrement {
             Some((dec_min, dec_max)) => {
                 match price {
@@ -432,7 +445,7 @@ impl Node {
                 }
             }
             None => {
-                // No decrement operation.
+                // No decrement operation: unchanged.
                 (self.min_fac, self.max_fac)
             }
         };
@@ -456,12 +469,12 @@ impl Node {
             decrement: self.decrement,
             length: self.length + 1,
             lengths: self.lengths.clone(),
-            next_node: self.next_node.clone(),
+            next_phase: self.next_phase.clone(),
         }
     }
 
     /// Get the node after the current phase.
-    fn after(mut self, mut chance: f64) -> Self {
+    fn after(&self, mut chance: f64) -> Self {
         // If this is a branch, we must account for the chance of moving to the
         // next phase rather than staying with this one.
         if self.min_len <= 1 && self.max_len > 1 {
@@ -469,8 +482,8 @@ impl Node {
             chance *= branch_chance;
         }
 
-        return self.next_node
-            .take()
+        return self.next_phase
+            .as_ref()
             .expect("BUG: Tree terminated early!")
             .after(&self, chance);
     }

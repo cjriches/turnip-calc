@@ -32,7 +32,8 @@ fn cli() -> App<'static, 'static> {
         the remaining possible patterns, with the most accurate estimate of \
         probability that one can theoretically calculate. This assumes that \
         the reverse-engineered turnip code from New Horizons is accurate, as \
-        this tool mirrors its calculations.")
+        this tool mirrors its calculations.\n\n\
+        Example usage: turnip-calc 90 --last-week smallspike 55 52 ? 43")
         .max_term_width(80)
         .arg(Arg::with_name(LAST_WEEK)
             .help("Last week's pattern.")
@@ -46,7 +47,8 @@ fn cli() -> App<'static, 'static> {
             .takes_value(true)
             .required(true))
         .arg(Arg::with_name(PRICES)
-            .help("The observed sell prices in order.")
+            .help("The sell prices observed so far in order. \
+                   Missed prices can be replaced with '?'.")
             .takes_value(true)
             .required(false)
             .multiple(true)

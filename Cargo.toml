@@ -1,6 +1,6 @@
 [package]
 name = "turnip-calc"
-version = "1.0.0"
+version = "1.1.0"
 description = "Turnip Pattern Calculator for Animal Crossing: New Leaf and New Horizons."
 edition = "2021"
 
