@@ -1,71 +1,13 @@
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 
+mod factory;
+
 use crate::pattern::Pattern;
+use factory::{ConditionalLengthNode, NodeFactory, SimpleNode};
 
 const MAX_HALF_DAYS: i32 = 12;
 const FLOAT_CMP_EPSILON: f64 = 0.0001;
-
-/// This allows us to swap in different methods for constructing the following phase.
-trait NodeFactory {
-    fn after(&self, prev: &Node, chance: f64) -> Node;
-}
-
-/// The simplest NodeFactory, which only passes on the probability and previous lengths.
-struct SimpleNode {
-    after: Node,
-}
-
-impl SimpleNode {
-    fn new(after: Node) -> Option<Rc<dyn NodeFactory>> {
-        Some(Rc::new(SimpleNode { after }))
-    }
-}
-
-impl NodeFactory for SimpleNode {
-    fn after(&self, prev: &Node, chance: f64) -> Node {
-        let mut after = self.after.clone();
-
-        after.prob *= prev.prob * chance;
-        after.lengths = prev.lengths.clone();
-        after.lengths.push(prev.length);
-
-        return after;
-    }
-}
-
-/// A NodeFactory which additionally sets the phase lengths from previous
-/// phase lengths via an arbitrary function.
-struct ConditionalLengthNode<F> {
-    after: Node,
-    length_func: F,
-}
-
-impl<F: 'static> ConditionalLengthNode<F>
-    where F: Fn(&Vec<i32>) -> (i32, i32)
-{
-    fn new(after: Node, length_func: F) -> Option<Rc<dyn NodeFactory>> {
-        Some(Rc::new(ConditionalLengthNode { after, length_func }))
-    }
-}
-
-impl<F> NodeFactory for ConditionalLengthNode<F>
-    where F: Fn(&Vec<i32>) -> (i32, i32)
-{
-    fn after(&self, prev: &Node, chance: f64) -> Node {
-        let mut after = self.after.clone();
-
-        after.prob *= prev.prob * chance;
-        after.lengths = prev.lengths.clone();
-        after.lengths.push(prev.length);
-
-        let (min_len, max_len) = (self.length_func)(&after.lengths);
-        after.min_len = min_len;
-        after.max_len = max_len;
-
-        return after;
-    }
-}
 
 /// A node in a pattern tree.
 /// To avoid verbose specification of the entire tree for each pattern (thousands
