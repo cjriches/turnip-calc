@@ -1,5 +1,5 @@
 use clap::{Arg, App, app_from_crate, crate_authors, crate_description,
-           crate_name, crate_version, ErrorKind, value_t, values_t};
+           crate_name, crate_version, Error, value_t, Values};
 
 use turnip_calc::Pattern;
 
@@ -15,6 +15,9 @@ const LAST_WEEK: &str = "last_week";
 const BASE_PRICE: &str = "BASE_PRICE";
 const PRICES: &str = "PRICES";
 const DEBUG: &str = "DEBUG";
+
+// Argument values.
+const MISSING_PRICE: &str = "?";
 
 fn cli() -> App<'static, 'static> {
     // Hack to make the build dirty when the toml changes.
@@ -68,14 +71,10 @@ fn main() {
         }
     });
     let base_price = value_t!(args, BASE_PRICE, u32).unwrap_or_else(|e| e.exit());
-    let prices = values_t!(args, PRICES, u32).unwrap_or_else(|e| {
-        match e.kind {
-            ErrorKind::ArgumentNotFound => Vec::new(),
-            _ => e.exit(),
-        }
-    });
-    // TODO allow missing prices with '?'
-    let prices = prices.into_iter().map(Some).collect();
+    let prices = match args.values_of(PRICES) {
+        Some(args) => parse_prices(args),
+        None => Vec::new(),
+    };
     let debug = args.is_present(DEBUG);
 
     let results = turnip_calc::run(last_week, base_price, prices, debug);
@@ -89,4 +88,26 @@ fn main() {
     for (pattern, chance) in results.iter() {
         println!("{:?}: {:.0}%", pattern, chance * 100.0);
     }
+}
+
+fn parse_prices(args: Values) -> Vec<Option<u32>> {
+    let mut prices = Vec::with_capacity(args.len());
+    for arg in args {
+        if arg == MISSING_PRICE {
+            prices.push(None);
+        } else {
+            let price = match arg.parse::<u32>() {
+                Ok(p) => p,
+                _ => {
+                    let msg = format!(
+                        "The argument '{}' should be a non-negative integer or \
+                         the character '?'", arg);
+                    let err = Error::value_validation_auto(msg);
+                    err.exit();
+                }
+            };
+            prices.push(Some(price));
+        }
+    }
+    return prices;
 }

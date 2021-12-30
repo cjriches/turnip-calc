@@ -130,7 +130,12 @@ impl Node {
         // Adjust for situations where Pattern A could be in 50-100 while Pattern B
         // could be in 60-70; if our observed price is in 60-70, then Pattern B
         // is more likely than Pattern A given no other information.
-        let chance = 1.0 / (self.max_fac - self.min_fac);
+        // This is only applicable when we have a known price.
+        let chance = if price.is_some() {
+            1.0 / (self.max_fac - self.min_fac)
+        } else {
+            1.0
+        };
 
         // If we're below the minimum length, return the next node.
         if self.min_len > 1 {
