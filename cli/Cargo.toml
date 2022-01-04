@@ -1,0 +1,17 @@
+[package]
+name = "turnip-calc-cli"
+authors = ["Chris Riches"]
+version = "1.1.0"
+description = "CLI Turnip Pattern Calculator for Animal Crossing: New Leaf and New Horizons."
+license = "MIT"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "turnip-calc"
+path = "src/main.rs"
+
+[dependencies]
+clap = "2.33.3"
+turnip-calc-lib = { path = "../lib" }

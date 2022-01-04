@@ -18,17 +18,13 @@ Given this method of calculation, the tool is (in theory) perfectly accurate, i.
 [^1]: The results of the reverse-engineered code can be found [here](https://docs.google.com/document/d/1bSVNpOnH_dKxkAGr718-iqh8s8Z0qQ54L-0mD-lbrXo/edit).
 
 ## Usage
-This is a command-line tool written in Rust - you need [Cargo](https://www.rust-lang.org/learn/get-started) to build and run it.
+This is a low-level tool written in Rust - you need [Cargo](https://www.rust-lang.org/learn/get-started) to build and run it.
 I created it mostly for my own interest - if you want a tool that's significantly easier to use and based on the same information, look [here](https://turnipprophet.io/).
 
-To get started, clone the repository and run `cargo run --release -- --help`.
-Example usage:
-```
-$ cargo run --release -- -l largespike 95 102 127
-Analysis:
-Random: 92%
-SmallSpike: 8%
-```
+The main library is located in the [lib/](lib) subdirectory; this implements all the calculator logic.
+
+A command-line tool for running the calculator is located in the [cli/](cli) subdirectory; this can be built and run anywhere.
+Just go into the subdirectory and use `cargo run` to run standalone, or `cargo install --path .` to install to your system.
 
 ## Inner Workings
 There are four price patterns: Decreasing, Random, Small Spike, and Large Spike.

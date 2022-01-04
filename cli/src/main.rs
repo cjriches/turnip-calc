@@ -1,7 +1,7 @@
 use clap::{Arg, App, app_from_crate, crate_authors, crate_description,
            crate_name, crate_version, Error, value_t, Values};
 
-use turnip_calc::Pattern;
+use turnip_calc_lib::Pattern;
 
 // Pattern names.
 const DECREASING: &str = "decreasing";
@@ -79,7 +79,7 @@ fn main() {
     };
     let debug = args.is_present(DEBUG);
 
-    let results = turnip_calc::run(last_week, base_price, prices, debug);
+    let results = turnip_calc_lib::run(last_week, base_price, prices, debug);
     if results.is_empty() {
         println!("These prices did not match any known pattern. Either your \
                   numbers are wrong, or there is a bug.");
