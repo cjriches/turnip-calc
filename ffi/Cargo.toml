@@ -1,7 +1,7 @@
 [package]
 name = "turnip-calc-ffi"
 authors = ["Chris Riches"]
-version = "1.1.0"
+version = "1.2.0"
 description = "Turnip Pattern Calculator FFI Library for Animal Crossing: New Leaf and New Horizons."
 license = "MIT"
 edition = "2021"

@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "turnip-calc-cli"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "clap",
  "turnip-calc-lib",
@@ -343,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "turnip-calc-ffi"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "jni",
  "turnip-calc-lib",
@@ -351,7 +351,7 @@ dependencies = [
 
 [[package]]
 name = "turnip-calc-lib"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "insta",
 ]
