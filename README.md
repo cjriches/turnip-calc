@@ -26,6 +26,10 @@ The main library is located in the [lib/](lib) subdirectory; this implements all
 A command-line tool for running the calculator is located in the [cli/](cli) subdirectory; this can be built and run anywhere.
 Just go into the subdirectory and use `cargo run` to run standalone, or `cargo install --path .` to install to your system.
 
+A dynamic library is also provided in the [ffi/](ffi) subdirectory; this provides FFI wrappers for all functionality.
+By default, C-compatible wrappers are generated.
+Building with the `java-bindings` feature will also generate JNI bindings, and the corresponding Java-side code is provided.
+
 ## Inner Workings
 There are four price patterns: Decreasing, Random, Small Spike, and Large Spike.
 Each pattern has a number of phases, each of which has different price behaviour, and lasts for a potentially variable amount of time.

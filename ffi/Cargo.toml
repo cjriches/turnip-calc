@@ -1,0 +1,21 @@
+[package]
+name = "turnip-calc-ffi"
+authors = ["Chris Riches"]
+version = "1.1.0"
+description = "Turnip Pattern Calculator FFI Library for Animal Crossing: New Leaf and New Horizons."
+license = "MIT"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "turnipcalc"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[features]
+java-bindings = ["jni"]
+
+[dependencies]
+jni = { version = "0.19.0", optional = true }
+turnip-calc-lib = { path = "../lib" }
