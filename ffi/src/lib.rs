@@ -79,6 +79,7 @@ pub struct CalcResult {
 /// To free it, you must call `free_result` later.
 ///
 /// If `prev_pattern` is not set to a valid value, it will be treated as unknown.
+/// If any price is zero, it will be treated as missing.
 #[no_mangle]
 pub unsafe extern fn turnip_calc(prev_pattern: u8, base_price: u32,
                                  prices: *const u32, num_prices: usize) -> CalcResult {
